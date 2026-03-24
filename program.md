@@ -108,14 +108,32 @@ When you reach experiment 10, 20, 30, etc.:
 - **Applied in:** Exp XXX (or "Skipped — reason")
 -->
 
-## Current Leaderboard Context
-| Technique | bpb | Notes |
-|-----------|-----|-------|
-| Baseline | ~1.2244 | Our starting point |
-| BigramHash + Int5 + Muon | 1.1428 | Top public entry uses these |
-| GPTQ-lite + EMA + QAT | 1.1228 | Current SOTA as of 2026-03-22 |
+## Targets & Baselines
 
-**Our target:** Beat 1.1228. Minimum viable improvement: 0.005 nats below current SOTA.
+### Local Target (A6000, 5 min)
+**You are optimizing against the A6000 baseline, not the leaderboard.**
+
+The leaderboard scores (e.g. 1.1228) were achieved on 8xH100s with 10 minutes of training — a very different compute budget. Comparing directly is apples to oranges.
+
+**Process:**
+1. Run the unmodified baseline `train_gpt.py` on the A6000 with `MAX_WALLCLOCK_SECONDS=300` (5 min) to establish our local baseline bpb
+2. Record that number as `A6000_BASELINE_BPB` below
+3. All subsequent experiments must beat `A6000_BASELINE_BPB` by ≥0.005 to be considered an improvement
+
+| Run | bpb | Hardware | Time | Notes |
+|-----|-----|----------|------|-------|
+| Unmodified baseline | TBD | A6000 | 5 min | **Run this first — sets A6000_BASELINE_BPB** |
+
+**A6000_BASELINE_BPB: TBD** ← update after first run
+
+### Leaderboard Context (reference only)
+| Technique | bpb | Hardware | Notes |
+|-----------|-----|----------|-------|
+| Naive baseline | ~1.2244 | 8xH100, 10min | Official starting point |
+| BigramHash + Int5 + Muon | 1.1428 | 8xH100, 10min | |
+| GPTQ-lite + EMA + QAT | 1.1228 | 8xH100, 10min | Current SOTA |
+
+These are directionally useful — techniques that work on H100s likely transfer. But don't use these numbers to gate local experiments.
 
 ## Promising Directions (in rough priority order)
 1. **QAT (int6 → int5)**: Quantization-Aware Training squeezes more params into 16MB
