@@ -61,7 +61,7 @@ class Hyperparameters:
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
-    num_layers = int(os.environ.get("NUM_LAYERS", 9))
+    num_layers = int(os.environ.get("NUM_LAYERS", 12))
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     model_dim = int(os.environ.get("MODEL_DIM", 512))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
@@ -509,31 +509,8 @@ class RMSNorm(nn.Module):
 class CastedLinear(nn.Linear):
     # Keep weights in fp32 for optimizer/state quality, cast at matmul time for bf16 compute.
     def forward(self, x: Tensor) -> Tensor:
-        w = self.weight
-        if _qat_enabled and w.numel() > INT8_KEEP_FLOAT_MAX_NUMEL:
-            w = _fake_quantize_int8(w)
         bias = self.bias.to(x.dtype) if self.bias is not None else None
-        return F.linear(x, w.to(x.dtype), bias)
-
-
-# Global QAT state — toggled by the training loop at 15% of wallclock
-_qat_enabled = False
-
-
-def _fake_quantize_int8(t: Tensor) -> Tensor:
-    """STE fake quantization: quantize to int8 and dequantize, straight-through gradient."""
-    t32 = t.float()
-    if t32.ndim == 2:
-        amax = t32.abs().amax(dim=1, keepdim=True).clamp_min(1e-12)
-        scale = amax / 127.0
-        q = torch.clamp(torch.round(t32 / scale), -127, 127)
-        deq = (q * scale).to(t.dtype)
-    else:
-        amax = t32.abs().amax().clamp_min(1e-12)
-        scale = amax / 127.0
-        q = torch.clamp(torch.round(t32 / scale), -127, 127)
-        deq = (q * scale).to(t.dtype)
-    return (deq - t).detach() + t
+        return F.linear(x, self.weight.to(x.dtype), bias)
 
 
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
@@ -987,10 +964,8 @@ def main() -> None:
     # MAIN TRAINING LOOP
     # -----------------------------
 
-    global _qat_enabled
     training_time_ms = 0.0
     stop_after_step: int | None = None
-    qat_start_frac = 0.15  # activate QAT at 15% of wallclock
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
@@ -1002,8 +977,6 @@ def main() -> None:
         if should_validate:
             torch.cuda.synchronize()
             training_time_ms += 1000.0 * (time.perf_counter() - t0)
-            _qat_was = _qat_enabled
-            _qat_enabled = False
             val_loss, val_bpb = eval_val(
                 args,
                 model,
@@ -1016,7 +989,6 @@ def main() -> None:
                 has_leading_space_lut,
                 is_boundary_token_lut,
             )
-            _qat_enabled = _qat_was
             log0(
                 f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
                 f"train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms / max(step, 1):.2f}ms"
@@ -1060,13 +1032,6 @@ def main() -> None:
         for opt in optimizers:
             opt.step()
         zero_grad_all()
-
-        # QAT: activate STE fake quantization in CastedLinear forward pass after 15% of wallclock
-        if not _qat_enabled and max_wallclock_ms is not None:
-            elapsed_for_qat = training_time_ms + 1000.0 * (time.perf_counter() - t0)
-            if elapsed_for_qat >= qat_start_frac * max_wallclock_ms:
-                _qat_enabled = True
-                log0(f"QAT:activated at step={step} elapsed={elapsed_for_qat:.0f}ms ({elapsed_for_qat/max_wallclock_ms*100:.1f}%)")
 
         step += 1
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
