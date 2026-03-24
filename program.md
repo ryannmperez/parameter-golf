@@ -67,10 +67,11 @@ For each experiment:
 
 When you reach experiment 10, 20, 30, etc.:
 
-1. **Search** for a recent LLM paper (published ≥ 2025) relevant to parameter efficiency, quantization, small LMs, or training dynamics. Good sources:
+1. **Search** for a recent LLM paper (published ≥ 2025) relevant to parameter efficiency, quantization, small LMs, training dynamics, or **novel tokenization methods**. Good sources:
    - arXiv cs.LG / cs.CL: https://arxiv.org/search/?searchtype=all&query=language+model+quantization&start=0
    - Semantic Scholar: https://api.semanticscholar.org/graph/v1/paper/search?query=efficient+language+model+2025&fields=title,year,abstract
    - Papers with Code: https://paperswithcode.com/methods
+   - For tokenization specifically: search "tokenization language model 2025", "byte-level tokenizer", "BPE alternatives", "tokenizer-free LM"
 
 2. **Read** the abstract and key sections. Understand the paper's core insight — what problem it solves and *why* the approach works mechanistically.
 
@@ -122,6 +123,7 @@ When you reach experiment 10, 20, 30, etc.:
 8. **Sliding window eval**: Better BPB estimation at test time
 9. **zstd-22**: Max compression on saved weights
 10. **Depth/width search**: More layers vs wider MLP given 16MB budget
+11. **Novel tokenization**: Smaller vocab, byte-level, or hybrid tokenizers — vocab size directly impacts embedding table size in the 16MB budget
 
 ## Experiment Log
 
