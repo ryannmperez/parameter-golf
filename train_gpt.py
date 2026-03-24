@@ -513,6 +513,48 @@ class CastedLinear(nn.Linear):
         return F.linear(x, self.weight.to(x.dtype), bias)
 
 
+def fake_quantize_int8(t: Tensor) -> Tensor:
+    """STE fake quantization: quantize to int8 and dequantize, with straight-through gradient."""
+    if not t.is_floating_point() or t.numel() == 0:
+        return t
+    t32 = t.float()
+    if t32.ndim == 2:
+        # Per-row quantization matching the export path
+        amax = t32.abs().amax(dim=1, keepdim=True).clamp_min(1e-12)
+        scale = amax / 127.0
+        q = torch.clamp(torch.round(t32 / scale), -127, 127)
+        deq = q * scale
+    else:
+        amax = t32.abs().amax().clamp_min(1e-12)
+        scale = amax / 127.0
+        q = torch.clamp(torch.round(t32 / scale), -127, 127)
+        deq = q * scale
+    # STE: forward uses quantized, backward passes through as if identity
+    return (deq - t).detach() + t
+
+
+def apply_qat_to_model(model: nn.Module) -> None:
+    """Apply fake quantization to all large float weight tensors (matching int8 export criteria)."""
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if not param.is_floating_point() or param.numel() <= INT8_KEEP_FLOAT_MAX_NUMEL:
+                continue
+            if any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS):
+                continue
+            orig_dtype = param.dtype
+            t32 = param.data.float()
+            if t32.ndim == 2:
+                amax = t32.abs().amax(dim=1, keepdim=True).clamp_min(1e-12)
+                scale = amax / 127.0
+                q = torch.clamp(torch.round(t32 / scale), -127, 127)
+                param.data = (q * scale).to(orig_dtype)
+            else:
+                amax = t32.abs().amax().clamp_min(1e-12)
+                scale = amax / 127.0
+                q = torch.clamp(torch.round(t32 / scale), -127, 127)
+                param.data = (q * scale).to(orig_dtype)
+
+
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
     # Keep small/control parameters in fp32 even when the model body runs in bf16.
     with torch.no_grad():
@@ -966,6 +1008,8 @@ def main() -> None:
 
     training_time_ms = 0.0
     stop_after_step: int | None = None
+    qat_active = False
+    qat_start_frac = 0.15  # activate QAT at 15% of wallclock
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
@@ -1032,6 +1076,15 @@ def main() -> None:
         for opt in optimizers:
             opt.step()
         zero_grad_all()
+
+        # QAT: activate fake quantization after 15% of wallclock budget, apply every 5 steps
+        if not qat_active and max_wallclock_ms is not None:
+            elapsed_for_qat = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+            if elapsed_for_qat >= qat_start_frac * max_wallclock_ms:
+                qat_active = True
+                log0(f"QAT:activated at step={step} elapsed={elapsed_for_qat:.0f}ms ({elapsed_for_qat/max_wallclock_ms*100:.1f}%)")
+        if qat_active and step % 20 == 0:
+            apply_qat_to_model(base_model)
 
         step += 1
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
