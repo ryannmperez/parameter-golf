@@ -53,12 +53,48 @@ python validate.py --script train_gpt.py --model <saved_model_path> --bpb <val_b
 
 For each experiment:
 1. Read the current `train_gpt.py` and the experiment log below
-2. Propose ONE focused change (not a rewrite) with a clear hypothesis
-3. Edit `train_gpt.py`
-4. Run the experiment
-5. Record results in the log below
-6. If `val_bpb` improved AND `compressed_size_bytes < 16000000`: keep the change
-7. If either condition fails: revert `train_gpt.py` to the previous working version
+2. Count completed experiments in the log (Exp 001, 002, etc.)
+3. **Every 10th experiment:** enter Literature Review mode (see below) before proposing the next idea
+4. Propose ONE focused change (not a rewrite) with a clear hypothesis
+5. Edit `train_gpt.py`
+6. Run the experiment
+7. Validate with `validate.py`
+8. Record results in the log below
+9. If `val_bpb` improved AND `compressed_size_bytes < 16000000`: keep the change, commit
+10. If either condition fails: revert `train_gpt.py` to last good commit, log failure
+
+## Literature Review Mode (every 10th experiment)
+
+When you reach experiment 10, 20, 30, etc.:
+
+1. **Search** for a recent LLM paper (published ≥ 2025) relevant to parameter efficiency, quantization, small LMs, or training dynamics. Good sources:
+   - arXiv cs.LG / cs.CL: https://arxiv.org/search/?searchtype=all&query=language+model+quantization&start=0
+   - Semantic Scholar: https://api.semanticscholar.org/graph/v1/paper/search?query=efficient+language+model+2025&fields=title,year,abstract
+   - Papers with Code: https://paperswithcode.com/methods
+
+2. **Read** the abstract and key sections. Identify ONE technique that:
+   - Could plausibly reduce bpb or allow more parameters within 16MB
+   - Is implementable in a single `train_gpt.py` edit (not a multi-week project)
+   - Has not already been tried in the experiment log
+
+3. **Log the paper** in the Literature section below:
+   - Title, authors, year, arXiv ID
+   - The specific technique you're extracting
+   - Why you think it applies here
+
+4. **Proceed** with that technique as the next experiment idea (or skip and pick from Promising Directions if nothing feasible is found — document why)
+
+## Literature Log
+
+<!-- Papers reviewed by the agent go here -->
+<!-- Format:
+### Paper Review — Exp XXX
+- **Paper:** Title (Year) — arXiv:XXXX.XXXXX
+- **Authors:** ...
+- **Technique extracted:** ...
+- **Feasibility:** High/Medium/Low — reason
+- **Applied in:** Exp XXX (or "Skipped — reason")
+-->
 
 ## Current Leaderboard Context
 | Technique | bpb | Notes |
