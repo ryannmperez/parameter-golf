@@ -34,6 +34,21 @@ At the end of each run, the script prints:
 - `val_bpb`: your score (lower is better)
 - `compressed_size_bytes`: artifact size (must be <16,000,000)
 
+## Validation (REQUIRED after every run)
+
+After each run, validate before keeping the change:
+
+```bash
+python validate.py --script train_gpt.py --model <saved_model_path> --bpb <val_bpb> --baseline <previous_best_bpb>
+```
+
+- Exit 0 = artifact is valid (size OK) → evaluate bpb improvement
+- Exit 1 = artifact is INVALID (over 16MB) → **revert train_gpt.py immediately**
+
+**Decision rule:**
+- `validate.py` exits 0 AND `val_bpb` < previous best → **keep**, log, commit
+- `validate.py` exits 1 OR `val_bpb` ≥ previous best → **revert** `train_gpt.py` to last good commit, log failure
+
 ## Experiment Loop
 
 For each experiment:
