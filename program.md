@@ -136,7 +136,17 @@ The leaderboard scores (e.g. 1.1228) were achieved on 8xH100s with 10 minutes of
 These are directionally useful — techniques that work on H100s likely transfer. But don't use these numbers to gate local experiments.
 
 ## Promising Directions (in rough priority order)
-1. **QAT (int6 → int5)**: Quantization-Aware Training squeezes more params into 16MB
+
+> ⚠️ **First run:** Before any experiments, run the unmodified baseline for 5 min to establish `A6000_BASELINE_BPB`. Then start with Exp 002 below.
+
+1. **QAT — delayed start at 15% of training time** ← START HERE (Exp 002)
+   - The baseline uses post-training int8 quantization (quantize after training). QAT simulates quantization *during* training so the model adapts to it.
+   - Training is time-based (no epochs). At 5 min = 300s, 15% = ~45 seconds in.
+   - Implement Straight-Through Estimator (STE) for gradients through quantized weights.
+   - Start with int6 (safer). If artifact fits in 16MB with headroom, try int5.
+   - SOTA entry uses `QAT @ 0.15` (15% of training elapsed) — use that as starting point.
+   - Hypothesis: model learns quantization-robust representations → better bpb at same compressed size.
+
 2. **BigramHash**: Adds cheap bigram vocab signal without extra parameters
 3. **Weight tying**: Share input embedding + output projection weights
 4. **Muon optimizer + weight decay**: Better gradient updates than AdamW alone
