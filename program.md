@@ -72,17 +72,22 @@ When you reach experiment 10, 20, 30, etc.:
    - Semantic Scholar: https://api.semanticscholar.org/graph/v1/paper/search?query=efficient+language+model+2025&fields=title,year,abstract
    - Papers with Code: https://paperswithcode.com/methods
 
-2. **Read** the abstract and key sections. Identify ONE technique that:
-   - Could plausibly reduce bpb or allow more parameters within 16MB
-   - Is implementable in a single `train_gpt.py` edit (not a multi-week project)
-   - Has not already been tried in the experiment log
+2. **Read** the abstract and key sections. Understand the paper's core insight — what problem it solves and *why* the approach works mechanistically.
 
-3. **Log the paper** in the Literature section below:
+3. **Synthesize a novel idea** inspired by (not copied from) the paper:
+   - Ask: "What is the underlying principle here, and how could that principle apply differently in our constrained 16MB setting?"
+   - The idea should be a **new combination, adaptation, or extrapolation** — not a direct reimplementation
+   - It must be implementable in a single `train_gpt.py` edit
+   - It must not have been tried in the experiment log
+   - Example: paper proposes low-rank weight decomposition for fine-tuning → synthesized idea: apply low-rank factorization only to MLP layers to save bytes for more attention heads
+
+4. **Log the paper + synthesis** in the Literature section below:
    - Title, authors, year, arXiv ID
-   - The specific technique you're extracting
-   - Why you think it applies here
+   - Core insight from the paper
+   - Your synthesized idea (distinct from the paper's direct method)
+   - Why you believe it applies to the 16MB/bpb constraint
 
-4. **Proceed** with that technique as the next experiment idea (or skip and pick from Promising Directions if nothing feasible is found — document why)
+5. **Proceed** with the synthesized idea as the next experiment (or document why synthesis wasn't feasible and fall back to Promising Directions)
 
 ## Literature Log
 
@@ -91,7 +96,8 @@ When you reach experiment 10, 20, 30, etc.:
 ### Paper Review — Exp XXX
 - **Paper:** Title (Year) — arXiv:XXXX.XXXXX
 - **Authors:** ...
-- **Technique extracted:** ...
+- **Core insight:** ...
+   - **Synthesized idea:** ... (distinct from direct implementation)
 - **Feasibility:** High/Medium/Low — reason
 - **Applied in:** Exp XXX (or "Skipped — reason")
 -->
