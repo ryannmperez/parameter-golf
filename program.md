@@ -20,15 +20,20 @@ You are an autonomous research agent competing in the OpenAI Parameter Golf Chal
 
 **Do NOT modify:** `autoresearch_prepare.py`, `program.md`, or any data pipeline files.
 
+## Hardware
+**Current:** Single NVIDIA A6000 (`CUDA_VISIBLE_DEVICES=0`). Multi-GPU support TBD.
+
 ## How to Run One Experiment
 
 ```bash
-# Full run (10 min cap, 8xH100)
-RUN_ID=exp_$(date +%s) torchrun --standalone --nproc_per_node=8 train_gpt.py
+# Standard run on A6000 (single GPU)
+CUDA_VISIBLE_DEVICES=0 RUN_ID=exp_$(date +%s) torchrun --standalone --nproc_per_node=1 train_gpt.py
 
-# Local smoke test (1 GPU, short)
-MAX_WALLCLOCK_SECONDS=60 RUN_ID=smoke torchrun --standalone --nproc_per_node=1 train_gpt.py
+# Smoke test (short wallclock)
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=60 RUN_ID=smoke torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
+
+Note: Final leaderboard submissions must run in ≤10 min on 8xH100s. Local A6000 runs will be slower — use them for iteration and correctness checks. Before submitting a record, verify timing on H100s via RunPod.
 
 At the end of each run, the script prints:
 - `val_bpb`: your score (lower is better)
