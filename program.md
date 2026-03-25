@@ -25,15 +25,38 @@ You are an autonomous research agent competing in the OpenAI Parameter Golf Chal
 
 ## How to Run One Experiment
 
-```bash
-# Standard run on A6000 (single GPU)
-CUDA_VISIBLE_DEVICES=0 RUN_ID=exp_$(date +%s) torchrun --standalone --nproc_per_node=1 train_gpt.py
+Each experiment uses the 3-point scaling runner. This runs train_gpt.py at 3 compute budgets (1min, 3min, 5min) as **separate fresh runs** with warmdown scaled proportionally, fits a power law curve, and extrapolates to H100 equivalent compute.
 
-# Smoke test (short wallclock)
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=60 RUN_ID=smoke torchrun --standalone --nproc_per_node=1 train_gpt.py
+```bash
+# Run a full 3-point scaling experiment
+bash run_experiment.sh exp_002_qat_int6
 ```
 
-Note: Final leaderboard submissions must run in ≤10 min on 8xH100s. Local A6000 runs will be slower — use them for iteration and correctness checks. Before submitting a record, verify timing on H100s via RunPod.
+This will:
+1. Run 3 separate training jobs (60s / 180s / 300s) with scaled warmdown
+2. Capture val_bpb from each
+3. Fit bpb(C) = a × C^(-β) + floor via scaling.py
+4. Extrapolate predicted bpb at ~80x compute (H100 equivalent)
+5. Validate the 5min artifact size with validate.py
+
+Output goes to `logs/<exp_name>_<timestamp>/`
+
+```bash
+# Smoke test only (skips scaling, just checks the script runs)
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=30 RUN_ID=smoke \
+torchrun --standalone --nproc_per_node=1 train_gpt.py
+```
+
+Note: Final leaderboard submissions must run in ≤10 min on 8xH100s. A6000 runs establish relative rankings and scaling curves. Before submitting a record, do a final validation run on H100s via RunPod.
+
+## Decision Rule (per experiment)
+
+After `run_experiment.sh` completes:
+
+- `validate.py` exits 1 → **REVERT immediately**, artifact too large
+- Predicted H100 bpb < current best by ≥0.005 → **KEEP**, log, commit
+- β higher than baseline β (steeper scaling curve) → promising even if 5min bpb is marginal
+- Otherwise → **REVERT**, log failure, move to next idea
 
 At the end of each run, the script prints:
 - `val_bpb`: your score (lower is better)
