@@ -697,22 +697,9 @@ class GPT(nn.Module):
     def _init_weights(self) -> None:
         if self.tie_embeddings:
             nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.tied_embed_init_std)
-        num_layers = len(self.blocks)
-        proj_scale = 1.0 / math.sqrt(2 * num_layers)
         for module in self.modules():
-            if isinstance(module, nn.Linear):
-                if getattr(module, "_zero_init", False):
-                    nn.init.zeros_(module.weight)
-                elif module.weight.ndim == 2 and min(module.weight.shape) >= 64:
-                    nn.init.orthogonal_(module.weight)
-                    if hasattr(module, '_zero_init') is False and isinstance(module, CastedLinear) and 'proj' in str(id(module)):
-                        pass  # skip scaling for non-proj layers
-        # Scale projection layers for residual stability
-        for block in self.blocks:
-            if hasattr(block.attn, 'proj'):
-                block.attn.proj.weight.data.mul_(proj_scale)
-            if hasattr(block.mlp, 'proj'):
-                block.mlp.proj.weight.data.mul_(proj_scale)
+            if isinstance(module, nn.Linear) and getattr(module, "_zero_init", False):
+                nn.init.zeros_(module.weight)
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
