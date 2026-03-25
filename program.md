@@ -99,6 +99,31 @@ d4e5f6g	0.000000	0.0	0.0	crash	double model width (OOM)
 ```
 
 
+## Scaling Law Extrapolation (periodic, every 5th experiment)
+
+Every 5th experiment (exp 005, 010, 015...), run a 3-point scaling curve instead of a single 5-min run. This predicts how the current best config will perform on 8xH100s.
+
+Run the **current best `train_gpt.py`** at 3 budgets with warmdown scaled proportionally:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=120 WARMDOWN_ITERS=100 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_120s.log 2>&1
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=180 WARMDOWN_ITERS=200 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_180s.log 2>&1
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 WARMDOWN_ITERS=400 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_300s.log 2>&1
+```
+
+Extract the 3 val_bpb values and run:
+
+```bash
+python scaling.py --budgets 120 180 300 --bpb <bpb_120s> <bpb_180s> <bpb_300s>
+```
+
+This fits `bpb(C) = a × C^(-β) + floor` and extrapolates to H100 equivalent compute (~80x). Key signals:
+- **β > 0.15**: steep curve — strong benefit from more compute → good candidate for H100 submission
+- **β < 0.05**: flat curve — technique tapped out, gains won't transfer to H100
+- **Predicted H100 bpb**: use this to decide whether to spend real money on a leaderboard run
+
+Log the scaling result in `results.tsv` as a `scaling` status entry with the predicted H100 bpb in the description.
+
 ## The experiment loop
 
 The experiment runs on a dedicated branch (e.g. `autoresearch/mar24`).
