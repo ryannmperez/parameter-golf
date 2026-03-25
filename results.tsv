@@ -1,0 +1,6 @@
+commit	val_bpb	compressed_mb	memory_gb	status	description
+e66f123	1.984200	7.9	44.0	keep	baseline (unmodified, A6000, 5 min, 228 steps)
+3a766af	1.986700	7.5	10.0	discard	QAT int8 weight rounding every 20 steps after 15% wallclock
+195d639	2.307500	7.0	10.0	discard	STE-based QAT in forward pass at 15% wallclock (too much noise + overhead)
+9ded782	2.911000	5.1	14.2	discard	SOTA competitor arch (Muon/banks/int6) - raw 2.087 but int6 quant destroys quality
+dc3eee0	2.146053	10.3	14.2	discard	switch to int8 export (was int6) - quant loss now 0.058 vs 0.824
