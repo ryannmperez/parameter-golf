@@ -1118,6 +1118,13 @@ def main() -> None:
     )
     log0(f"final_int8_zlib_roundtrip_exact val_loss:{q_val_loss:.8f} val_bpb:{q_val_bpb:.8f}")
 
+    # Print final output format expected by the harness
+    peak_vram_mb = torch.cuda.max_memory_allocated() // 1024 // 1024
+    compressed_size = os.path.getsize("final_model.int8.ptz") if os.path.exists("final_model.int8.ptz") else 0
+    log0(f"val_bpb:              {q_val_bpb:.6f}")
+    log0(f"compressed_size_bytes: {compressed_size}")
+    log0(f"peak_vram_mb:         {peak_vram_mb}")
+
     if distributed:
         dist.destroy_process_group()
 
