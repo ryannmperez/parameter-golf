@@ -30,8 +30,8 @@ export CUDA_VISIBLE_DEVICES=0
 # Training budgets (seconds) and proportional warmdown iters
 # Warmdown = ~40% of expected steps at each budget
 # Rough A6000 step estimate: ~300 steps/min at batch=524288
-declare -a BUDGETS=(60 180 300)
-declare -a WARMDOWNS=(50 200 400)   # scaled warmdown iters per budget
+declare -a BUDGETS=(120 180 300)
+declare -a WARMDOWNS=(100 200 400)   # scaled warmdown iters per budget
 declare -a BPB_RESULTS=()
 declare -a COMPUTE_RESULTS=()
 
