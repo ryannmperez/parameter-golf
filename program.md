@@ -36,7 +36,7 @@ CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 torchrun --standalone --nproc_p
 - Install new packages or add dependencies.
 - Modify the evaluation harness.
 
-**The goal is simple: get the lowest val_bpb.** Everything is fair game as long as the code runs without crashing, finishes within the time budget, and the final compressed artifact (model weights + `train_gpt.py` code) fits in **16,000,000 bytes** when compressed with zstd-22.
+**The goal is simple: get the steepest scaling curve (highest β).** β measures how much a config benefits from more compute — a higher β means the technique scales better and will produce the lowest val_bpb on the final H100 run. Everything is fair game as long as the code runs without crashing, finishes within the time budget, and the final compressed artifact (model weights + `train_gpt.py` code) fits in **16,000,000 bytes** when compressed with zstd-22.
 
 
 **VRAM** is a soft constraint. Some increase is acceptable for meaningful val_bpb gains, but it should not blow up dramatically.
@@ -75,54 +75,47 @@ python validate.py --script train_gpt.py --model <saved_model_path> --bpb <val_b
 
 When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
 
-The TSV has a header row and 6 columns:
+The TSV has a header row and 9 columns:
 
 ```
-commit	val_bpb	compressed_mb	memory_gb	status	description
+commit	beta	bpb_120s	bpb_180s	bpb_300s	compressed_mb	memory_gb	status	description
 ```
 
 1. git commit hash (short, 7 chars)
-2. val_bpb achieved (e.g. 1.234567) — use 0.000000 for crashes
-3. compressed artifact size in MB, round to .1f (e.g. 7.9 — divide compressed_size_bytes by 1048576) — use 0.0 for crashes. Must be < 15.3 (16,000,000 bytes)
-4. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
-5. status: `keep`, `discard`, or `crash`
-6. short text description of what this experiment tried
+2. β from scaling curve fit (e.g. 0.1234) — the PRIMARY metric. Higher = better. Use 0.0000 for crashes
+3. val_bpb at the 120s budget (e.g. 1.534567). Use 0.000000 for crashes
+4. val_bpb at the 180s budget (e.g. 1.434567). Use 0.000000 for crashes
+5. val_bpb at the 300s budget (e.g. 1.234567). Use 0.000000 for crashes
+6. compressed artifact size in MB from 300s run, round to .1f (e.g. 7.9 — divide compressed_size_bytes by 1048576) — use 0.0 for crashes. Must be < 15.3 (16,000,000 bytes)
+7. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
+8. status: `keep`, `discard`, or `crash`
+9. short text description of what this experiment tried
 
 Example:
 
 ```
-commit	val_bpb	compressed_mb	memory_gb	status	description
-a1b2c3d	1.984200	7.9	44.0	keep	baseline
-b2c3d4e	1.970100	8.1	44.2	keep	QAT delayed start at 15%
-c3d4e5f	1.990000	7.9	44.0	discard	switch to GeLU activation
-d4e5f6g	0.000000	0.0	0.0	crash	double model width (OOM)
+commit	beta	bpb_120s	bpb_180s	bpb_300s	compressed_mb	memory_gb	status	description
+a1b2c3d	0.1200	2.184200	2.084200	1.984200	7.9	44.0	keep	baseline
+b2c3d4e	0.1350	2.170100	2.070100	1.970100	8.1	44.2	keep	QAT delayed start at 15% — steeper scaling
+c3d4e5f	0.0800	2.090000	2.040000	1.990000	7.9	44.0	discard	switch to GeLU — flatter scaling curve
+d4e5f6g	0.0000	0.000000	0.000000	0.000000	0.0	0.0	crash	double model width (OOM)
 ```
 
 
-## Scaling Law Extrapolation (every experiment)
+## Scaling Law Extrapolation (every experiment — PRIMARY METRIC)
 
-Every experiment runs at 3 compute budgets to fit a scaling curve and predict H100 performance before spending real credits.
+**β is the primary metric.** Every experiment runs at 3 compute budgets to fit a scaling curve. The fitted β (curve steepness) determines whether a change is kept or discarded — not the val_bpb from any single run. A higher β means the config scales better with compute, which is what matters for the final H100 submission.
 
-Run the **current best `train_gpt.py`** at 3 budgets with warmdown scaled proportionally:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=120 WARMDOWN_ITERS=100 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_120s.log 2>&1
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=180 WARMDOWN_ITERS=200 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_180s.log 2>&1
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 WARMDOWN_ITERS=400 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_300s.log 2>&1
-```
-
-Extract the 3 val_bpb values and run:
+`run_experiment.sh` handles this automatically — it runs all 3 budgets (120s / 180s / 300s), extracts val_bpb, calls `scaling.py` to fit the curve, and validates the artifact:
 
 ```bash
-python scaling.py --budgets 120 180 300 --bpb <bpb_120s> <bpb_180s> <bpb_300s>
+bash run_experiment.sh <exp_name>
 ```
 
 This fits `bpb(C) = a × C^(-β) + floor` and extrapolates to H100 equivalent compute (~80x). Key signals:
 - **β > 0.15**: steep curve — strong benefit from more compute → good candidate for H100 submission
 - **β < 0.05**: flat curve — technique tapped out, gains won't transfer to H100
 - **Predicted H100 bpb**: use this to decide whether to spend real money on a leaderboard run
-
-Log the scaling result in `results.tsv` as a `scaling` status entry with the predicted H100 bpb in the description.
 
 ## The experiment loop
 
@@ -136,30 +129,23 @@ LOOP FOREVER:
 4. Edit `train_gpt.py`
 5. **Pre-flight size check**: Before spending 5 minutes on a training run, estimate whether the artifact will fit in 16MB. Count total parameters from the model config (embedding + transformer layers + output head), multiply by bytes-per-weight for the target quantization (e.g. int8 = 1 byte, int6 = 0.75, int5 = 0.625), and compare against ~15MB (leaving ~1MB headroom for code + overhead). If the estimate exceeds 15MB, adjust the architecture before running.
 6. git commit
-7. Run the 3-point scaling experiment (120s / 180s / 300s with scaled warmdown):
+7. Run the 3-point scaling experiment via `run_experiment.sh`:
 ```bash
-bash run_experiment.sh <exp_name> > run.log 2>&1
+bash run_experiment.sh <exp_name>
 ```
-Or manually:
-```bash
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=120 WARMDOWN_ITERS=100 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_120s.log 2>&1
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=180 WARMDOWN_ITERS=200 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_180s.log 2>&1
-CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 WARMDOWN_ITERS=400 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_300s.log 2>&1
-```
-8. Read out the results from each log: `grep "^val_bpb:\|^compressed_size_bytes:" run_300s.log`
-9. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the stack trace and attempt a fix
-10. Validate with `validate.py`
-11. Record results in `results.tsv` (NOTE: do not commit results.tsv, leave it untracked by git)
-12. If val_bpb improved AND compressed_size_bytes < 16000000: keep the change, commit
-13. If either condition fails: revert `train_gpt.py` to last good commit, log failure
+   This runs train_gpt.py at 3 budgets (120s / 180s / 300s with scaled warmdown), extracts val_bpb from each run, fits the scaling curve via `scaling.py`, and validates the 300s artifact. All logs go to `logs/<exp_name>_<timestamp>/`.
+8. If a run crashed, check the logs: `tail -n 50 logs/<exp_name>_*/run_300s.log`
+9. Record results in `results.tsv` with β as the primary metric (NOTE: do not commit results.tsv, leave it untracked by git)
+10. **Keep/discard decision based on β**: If β improved over the current best AND compressed_size_bytes < 16000000: keep the change, commit
+11. If either condition fails: revert `train_gpt.py` to last good commit, log failure
 
-**Timeout**: Each experiment should take ~5 minutes total (+ startup/eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
+**Timeout**: Each experiment runs 3 budgets (120s + 180s + 300s = ~10 minutes of training + startup/eval overhead per run). The full experiment should take ~15 minutes. If it exceeds 25 minutes, kill it and treat it as a failure (discard and revert).
 
 **Crashes**: If a run crashes (OOM, or a bug, or etc.), use your judgment: If it's something dumb and easy to fix (e.g. a typo, a missing import), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status, and move on.
 
 **NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — read papers referenced in the code, re-read the in-scope files for new angles, try combining previous near-misses, try more radical architectural changes. The loop runs until the human interrupts you, period.
 
-As an example use case, a user might leave you running while they sleep. If each experiment takes you ~5 minutes then you can run approx 12/hour, for a total of about 100 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
+As an example use case, a user might leave you running while they sleep. If each experiment takes ~15 minutes then you can run approx 4/hour, for a total of about 30 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
 
 **Print the results table to the screen after each round.**
 
