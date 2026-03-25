@@ -25,7 +25,7 @@ You are an autonomous research agent competing in the OpenAI Parameter Golf Chal
 
 ## How to Run One Experiment
 
-Each experiment uses the 3-point scaling runner. This runs train_gpt.py at 3 compute budgets (1min, 3min, 5min) as **separate fresh runs** with warmdown scaled proportionally, fits a power law curve, and extrapolates to H100 equivalent compute.
+Each experiment uses the 3-point scaling runner. This runs train_gpt.py at 3 compute budgets (2min, 3min, 5min) as **separate fresh runs** with warmdown scaled proportionally, fits a power law curve, and extrapolates to H100 equivalent compute.
 
 ```bash
 # Run a full 3-point scaling experiment
@@ -33,7 +33,7 @@ bash run_experiment.sh exp_002_qat_int6
 ```
 
 This will:
-1. Run 3 separate training jobs (60s / 180s / 300s) with scaled warmdown
+1. Run 3 separate training jobs (120s / 180s / 300s) with scaled warmdown
 2. Capture val_bpb from each
 3. Fit bpb(C) = a × C^(-β) + floor via scaling.py
 4. Extrapolate predicted bpb at ~80x compute (H100 equivalent)
