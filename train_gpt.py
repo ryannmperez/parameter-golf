@@ -976,6 +976,11 @@ def main() -> None:
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
+    # SWA: average weights from last 20% of training time
+    swa_state = None
+    swa_count = 0
+    swa_start_frac = 0.8  # start averaging at 80% of wallclock
+
     step = 0
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
@@ -1042,6 +1047,16 @@ def main() -> None:
 
         step += 1
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+
+        # SWA: accumulate weights after swa_start_frac of wallclock
+        if max_wallclock_ms is not None and approx_training_time_ms >= swa_start_frac * max_wallclock_ms:
+            if swa_state is None:
+                swa_state = {k: v.detach().clone() for k, v in base_model.state_dict().items()}
+                swa_count = 1
+            else:
+                for k, v in base_model.state_dict().items():
+                    swa_state[k] += v.detach()
+                swa_count += 1
         should_log_train = (
             args.train_log_every > 0
             and (step <= 10 or step % args.train_log_every == 0 or stop_after_step is not None)
@@ -1065,6 +1080,15 @@ def main() -> None:
         f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
         f"reserved: {torch.cuda.max_memory_reserved() // 1024 // 1024} MiB"
     )
+
+    # Apply SWA averaged weights
+    if swa_state is not None and swa_count > 1:
+        log0(f"swa: applying averaged weights from {swa_count} snapshots")
+        for k in swa_state:
+            swa_state[k] /= swa_count
+        base_model.load_state_dict(swa_state, strict=True)
+    else:
+        log0("swa: not enough snapshots, using final weights")
 
     # -----------------------------
     # SERIALIZATION + ROUNDTRIP VALIDATION
