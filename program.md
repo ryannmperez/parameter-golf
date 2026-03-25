@@ -99,9 +99,9 @@ d4e5f6g	0.000000	0.0	0.0	crash	double model width (OOM)
 ```
 
 
-## Scaling Law Extrapolation (periodic, every 5th experiment)
+## Scaling Law Extrapolation (every experiment)
 
-Every 5th experiment (exp 005, 010, 015...), run a 3-point scaling curve instead of a single 5-min run. This predicts how the current best config will perform on 8xH100s.
+Every experiment runs at 3 compute budgets to fit a scaling curve and predict H100 performance before spending real credits.
 
 Run the **current best `train_gpt.py`** at 3 budgets with warmdown scaled proportionally:
 
@@ -136,8 +136,17 @@ LOOP FOREVER:
 4. Edit `train_gpt.py`
 5. **Pre-flight size check**: Before spending 5 minutes on a training run, estimate whether the artifact will fit in 16MB. Count total parameters from the model config (embedding + transformer layers + output head), multiply by bytes-per-weight for the target quantization (e.g. int8 = 1 byte, int6 = 0.75, int5 = 0.625), and compare against ~15MB (leaving ~1MB headroom for code + overhead). If the estimate exceeds 15MB, adjust the architecture before running.
 6. git commit
-7. Run the experiment: `CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 torchrun --standalone --nproc_per_node=1 train_gpt.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
-8. Read out the results: `grep "^val_bpb:\|^compressed_size_bytes:" run.log`
+7. Run the 3-point scaling experiment (120s / 180s / 300s with scaled warmdown):
+```bash
+bash run_experiment.sh <exp_name> > run.log 2>&1
+```
+Or manually:
+```bash
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=120 WARMDOWN_ITERS=100 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_120s.log 2>&1
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=180 WARMDOWN_ITERS=200 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_180s.log 2>&1
+CUDA_VISIBLE_DEVICES=0 MAX_WALLCLOCK_SECONDS=300 WARMDOWN_ITERS=400 torchrun --standalone --nproc_per_node=1 train_gpt.py > run_300s.log 2>&1
+```
+8. Read out the results from each log: `grep "^val_bpb:\|^compressed_size_bytes:" run_300s.log`
 9. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the stack trace and attempt a fix
 10. Validate with `validate.py`
 11. Record results in `results.tsv` (NOTE: do not commit results.tsv, leave it untracked by git)
